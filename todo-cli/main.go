@@ -1,3 +1,4 @@
+// Objective: Create a CLI that allows users to add, view, and complete tasks.
 package main
 
 import (
@@ -5,13 +6,13 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/google/shlex"
 )
 
-// Objective: Create a CLI that allows users to add, view, and complete tasks.
 
 type Task struct {
 	id        int
@@ -24,7 +25,13 @@ func main() {
 	var tasks []Task
 
 	scanner := bufio.NewScanner(os.Stdin)
-	fmt.Println("To edit: /e [id] [title], To quit: /q")
+	fmt.Println("*********************************")
+	fmt.Println("* Welcome, these are the commands: ")
+	fmt.Println("* To edit: /e -id=3 -title=\"New Title\" completed=true")
+	fmt.Println("* To list tasks: /l")
+	fmt.Println("* To Delete a task: /d -id=2")
+	fmt.Println("* To quit: /q")
+	fmt.Println("*********************************")
 
 	for {
 		fmt.Print("Task: ")
@@ -55,7 +62,8 @@ func main() {
 			// Parse flags for edit command
 			fs := flag.NewFlagSet("edit", flag.ContinueOnError)
 			id := fs.Int("id", -1, "ID of the task to edit")
-			text := fs.String("text", "", "New text for the task")
+			title := fs.String("title", "", "New title for the task")
+			completed := fs.Bool("completed", false, "Whether task completed")
 
 			if err := fs.Parse(args); err != nil {
 				fmt.Fprintln(os.Stderr, "Error parsing flags:", err)
@@ -67,19 +75,64 @@ func main() {
 				fmt.Fprintln(os.Stderr, "Error: -id flag is required")
 				continue
 			}
-			if *text == "" {
-				fmt.Fprintln(os.Stderr, "Error: -text flag is required")
-				continue
-			}
 
 			// Edit the task
-			if err := editTask(&tasks, *id, *text); err != nil {
+			if err := editTask(&tasks, *id, title, completed); err != nil {
 				fmt.Fprintln(os.Stderr, err)
 				continue
 			}
 
 			fmt.Printf("Task %d updated successfully\n", *id)
+			continue
+		}
+
+		if command == "/l" {
 			printTasks(tasks)
+			continue
+		}
+
+		// Delete a task
+		if strings.HasPrefix(command, "/d") {
+			args, err := shlex.Split(command)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "Error splitting input:", err)
+				continue
+			}
+
+			// Skip the "/e" command itself
+			if len(args) < 1 {
+				fmt.Fprintln(os.Stderr, "Error: /e command requires arguments")
+				continue
+			}
+			args = args[1:]
+
+			var idToRemove int
+			var indexToRemove int
+			fs := flag.NewFlagSet("delete", flag.ContinueOnError)
+			id := fs.Int("id", -1, "ID of the task to delete")
+
+			if err := fs.Parse(args); err != nil {
+				fmt.Fprintln(os.Stderr, "Error parsing flags:", err)
+				continue
+			}
+			
+			if *id == -1 {
+				fmt.Fprintln(os.Stderr, "Error: -id flag is required")
+				continue
+			}
+			for i, item := range tasks {
+				if item.id == *id {
+					idToRemove = item.id
+					indexToRemove = i
+					break
+				}
+			}
+			if idToRemove == 0 {
+				fmt.Println("No valid id provided")
+				continue
+			}
+			tasks = slices.Delete(tasks, indexToRemove, indexToRemove+1)
+			fmt.Printf("Deleted id %d successfully \n", idToRemove)
 			continue
 		}
 
@@ -106,10 +159,15 @@ func findId(tasks []Task) int {
 	return id
 }
 
-func editTask(tasks *[]Task, id int, newText string) error {
+func editTask(tasks *[]Task, id int, newTitle *string, completed *bool) error {
 	for i, task := range *tasks {
 		if task.id == id {
-			(*tasks)[i].title = newText
+			if newTitle != nil && *newTitle != "" {
+				(*tasks)[i].title = *newTitle
+			}
+			if completed != nil {
+				(*tasks)[i].completed = *completed
+			}
 			return nil
 		}
 	}
@@ -117,8 +175,8 @@ func editTask(tasks *[]Task, id int, newText string) error {
 }
 
 func printTasks(tasks []Task) {
-    fmt.Println("Your tasks:")
-    for _, t := range tasks {
-        fmt.Printf("  [%d] %s (done=%v)\n", t.id, t.title, t.completed)
-    }
+	fmt.Println("Your tasks:")
+	for _, t := range tasks {
+		fmt.Printf("  [%d] %s (completed=%v)\n", t.id, t.title, t.completed)
+	}
 }
